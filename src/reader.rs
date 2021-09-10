@@ -1,8 +1,11 @@
+use std::fs::File;
+
+use anyhow::Result;
+
 use crate::document::PdfDocument;
 use crate::stream::{Stream, ReadSeek};
+use crate::error::Error;
 use crate::utils::is_whitespace;
-
-use std::fs::File;
 
 impl PdfDocument {
     pub fn load_data(data: Vec<u8>) {
@@ -63,7 +66,7 @@ impl<T: ReadSeek+std::fmt::Debug> Reader<T> {
                 pos = 0;
             }
             self.stream.set_pos(pos as u64);
-            found = self.find("startxref".as_bytes(), step as u64);
+            found = self.find("startxref".as_bytes(), step as usize, true).unwrap_or(false);
         }
 
         if found {
@@ -87,27 +90,49 @@ impl<T: ReadSeek+std::fmt::Debug> Reader<T> {
         start_xref
     }
 
-    fn find(&mut self, signature: &[u8], limit: u64) -> bool {
+    fn find(&mut self, signature: &[u8], limit: usize, backwords: bool) -> Result<bool> {
+        let scan_bytes = self.stream.peek_bytes(limit).ok_or(Error::InvalidFile("startxref not found"))?;
+
         let signature_length = signature.len();
-        let scan_bytes = self.stream.peek_bytes(limit as usize).expect("stream can not peek_byte");
         let scan_length = scan_bytes.len() - signature_length;
         if scan_length <= 0 {
-            return false;
+            return Ok(false);
         }
-        let mut pos: usize = 0;
-        while pos <= scan_length {
-            let mut j: usize = 0;
-            while j < signature_length && scan_bytes[pos + j] == signature[j] {
-                j += 1;
+
+        if backwords {
+            let signature_end = signature_length - 1;
+
+            let mut pos  = scan_bytes.len() - 1;
+            while pos >= signature_end {
+                let mut j = 0;
+                while j < signature_length &&
+                    scan_bytes[pos - j] == signature[signature_end - j] {
+                    j += 1
+                }
+                if j >= signature_length {
+                    self.stream.seek_pos((pos - signature_end) as i64);
+                    return Ok(true);
+                }
+                pos -= 1;
             }
-            if j >= signature_length {
-                // `signature` found.
-                self.stream.seek_pos(pos as i64);
-                return true;
+            return Ok(false);
+
+        } else {
+            let mut pos: usize = 0;
+            while pos <= scan_length {
+                let mut j: usize = 0;
+                while j < signature_length && scan_bytes[pos + j] == signature[j] {
+                    j += 1;
+                }
+                if j >= signature_length {
+                    // `signature` found.
+                    self.stream.seek_pos(pos as i64);
+                    return Ok(true);
+                }
+                pos += 1;
             }
-            pos += 1;
+            return Ok(false);
         }
-        return false;
     }
 }
 
@@ -124,7 +149,7 @@ mod tests {
     const EXAMPLES: [(&str, u64); 5] = [
         ("tests/examples/dummy.pdf", 12787),
         ("tests/examples/sample.pdf", 2714),
-        ("tests/examples/PDF_sample.pdf", 60009),
+        ("tests/examples/PDF_sample.pdf", 60626),
         ("tests/examples/140514041111253731pdf1.pdf", 14443),
         ("tests/examples/7a79c35f7ce0704dec63be82440c8182.pdf", 16595),
     ];
