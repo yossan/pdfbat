@@ -61,8 +61,7 @@ impl<'a> Stream<&'a File> {
 
 }
 
-impl<'a, T: ReadSeek + std::fmt::Debug> Stream<T>
-{
+impl<'a, T: ReadSeek> Stream<T> {
 
     pub fn len(&self) -> u64 {
         self.end - self.start
