@@ -10,4 +10,7 @@ pub enum Error {
 
     #[error("Object parsing error")]
     ParserError,
+
+    #[error("This pdf is missing data: ${0}")]
+    MissingDataException(&'static str),
 }

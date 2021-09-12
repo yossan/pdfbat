@@ -12,40 +12,27 @@ impl Debug for Name {
     }
 }
 
+pub struct Dictionary(HashMap<Name, Primitives>);
+
+pub struct Ref(u32, u32);
+
+pub struct Cmd(Vec<u8>);
+
 #[derive(PartialEq, Clone)]
 pub enum Primitives {
     Null,
     Int(i64),
     Str(Vec<u8>),
-    HexStr(Vec<u16>),
+    HexStr(Vec<u8>),
     Real(f64),
     Name(Name),
     Array(Vec<Primitives>),
-    Dict(HashMap<Name, Primitives>),
+    Dict(Dictionary),
     //Stream(Stream),
-    Ref(u32, u32),
-    Cmd(Vec<u8>),
+    Ref(Ref),
+    Cmd(Cmd),
     EOF,
 }
-
-impl Debug for Primitives {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            Primitives::Null => f.debug_tuple("Null").finish(),
-            Primitives::Int(num) => f.debug_tuple("Int").field(num).finish(),
-            Primitives::Str(str) => f.debug_tuple("Str").field(&String::from_utf8(str.clone()).unwrap()).finish(),
-            Primitives::HexStr(str) => f.debug_tuple("HexStr").field(&String::from_utf16(str.as_slice())).finish(),
-            Primitives::Real(num) => f.debug_tuple("Real").field(num).finish(),
-            Primitives::Name(name) => f.debug_tuple("Name").field(name).finish(),
-            Primitives::Array(objects) => f.debug_tuple("Array").field(objects).finish(),
-            Primitives::Dict(dict) => f.debug_tuple("Dict").field(dict).finish(),
-            Primitives::Ref(n, g) => f.debug_tuple("Ref").field(n).field(g).finish(),
-            Primitives::Cmd(cmd) => f.debug_tuple("Cmd").field(&String::from_utf8(cmd.clone()).unwrap()).finish(),
-            Primitives::EOF => f.debug_tuple("EOF").finish(),
-        }
-    }
-}
-
 
 impl Eq for Primitives {}
 
@@ -74,6 +61,13 @@ impl Primitives {
         false
     }
 
+    pub fn is_dict(&self) -> bool {
+        match(self) {
+            Primitives::Dict => true,
+            _ => false
+        }
+    }
+
     pub fn is_name(&self) -> bool {
         if let Primitives::Name(_) = self {
             true
@@ -96,6 +90,13 @@ impl Primitives {
         } else {
             false
         }
+    }
+
+    pub fn get_dict(self) -> Option<Dictionary> {
+        if let Primitives::Dict(dictionary) = self {
+            return Some(dictionary)
+        }
+        None
     }
 
     pub fn get_cmd(&self) -> Option<&Vec<u8>> {

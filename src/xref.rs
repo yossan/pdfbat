@@ -1,7 +1,8 @@
 use crate::lexer::Lexer;
 use crate::parser::Parser;
 use crate::stream::{Stream, ReadSeek};
-use crate::primitives::*;
+use crate::primitives::{Name, Dictionary, Ref, Cmd}
+use crate::primitives::Primitives;
 use crate::error::Error;
 
 macro_rules! get_integer {
@@ -17,12 +18,12 @@ macro_rules! get_cmd {
 
 pub struct XRef<T> {
     stream: Stream<T>,
-    startxref_queue: Vec<u64>,
+    trailer_dict: Dictionary,
+    // startxref_queue: Vec<u64>,
     password: Option<String>,
-    table_state: Option<TableState>,
+    // table_state: Option<TableState>,
     entries: Vec<Entry>,
 }
-
 
 impl<T: ReadSeek> XRef<T> {
     pub fn new(stream: Stream<T>, startxref: u64, password: Option<String>) -> XRef<T> {
@@ -34,16 +35,30 @@ impl<T: ReadSeek> XRef<T> {
             entries: Vec::new(),
         }
     }
+}
+
+pub struct XRefReader<T> {
+    stream: Stream<T>,
+    startxref: i64,
+    table_state: Option<TableState>,
+    entries: Vec<Entry>,
+}
+
+
+impl<T: ReadSeek> XRefReader<T> {
     pub fn set_startxref(&mut self, startxref: u64) {
         self.startxref_queue.push(startxref);
     }
 
     pub fn parse(&mut self) {
+        // Dictionary
         let trait_dict = self.read_xref();
 
         // TODO: Encrypt
+        if (trailer_dict.get("Encrypt").is_none()) {
+        }
 
-        let root = trait_dict.get("Root");
+
         /*
         if (is_dict(root) && root.has("Page")) {
             self.root = root;
@@ -51,30 +66,17 @@ impl<T: ReadSeek> XRef<T> {
         */
     }
 
-    fn read_xref(&mut self) {
+    fn read_xref(&mut self) -> Dictionary {
         let mut startxref_parsed_cache = vec![0_u64; self.startxref_queue.len()];
 
-        while self.startxref_queue.len() > 0 {
-            let startxref = self.startxref_queue[0];
-            if startxref_parsed_cache.contains(&startxref) {
-                println!("read_xref - skipping XRef table since it was already parsed.");
-                self.startxref_queue.remove(0);
-                continue;
-            }
-            startxref_parsed_cache.push(startxref);
+        self.stream.set_pos(startxref + self.stream.start());
 
-            self.stream.set_pos(startxref + self.stream.start());
-
-            let lexer = Lexer::new(self.stream.clone());
-            let mut parser = Parser::new(lexer, true);
-            let obj = parser.get_obj().unwrap();
-            if obj.is_cmd("xref") {
-                // Parse end-of-file XRef
-                let dict = self.process_xreftable(parser);
-                if self.top_dict.is_none() {
-                    self.top_dict = dict;
-                }
-            }
+        let lexer = Lexer::new(self.stream.clone());
+        let mut parser = Parser::new(lexer, true);
+        let obj = parser.get_obj().unwrap();
+        if obj.is_cmd("xref") {
+            // Parse end-of-file XRef
+            let dict = self.process_xreftable(parser);
         }
     }
 
@@ -125,13 +127,12 @@ impl<T: ReadSeek> XRef<T> {
          let mut parser = parser;
 
         // Outer loop is over subsection headers.
-        let mut obj;
 
-        loop {
-            obj = parser.get_obj()?;
+        let trailer_obj = loop {
             if table_state.first_entry_num.is_none() && table_state.entry_count.is_none() {
+                let obj = parser.get_obj()?;
                 if obj.is_cmd("trailer") {
-                    break;
+                    return obj;
                 }
                 table_state.set_first_entry_num(get_integer!(obj));
                 let next = parser.get_obj()?;
@@ -177,7 +178,6 @@ impl<T: ReadSeek> XRef<T> {
                     first = 0;
                 }
 
-                dbg!(&entry);
                 if self.entries.len() > i as usize {
                     self.entries[(i + first) as usize] = entry;
                 } else {
@@ -198,7 +198,7 @@ impl<T: ReadSeek> XRef<T> {
             return Err(Error::ParserError);
         }
 
-        return Ok(obj);
+        return trailer_obj.get_dict();
     }
 }
 

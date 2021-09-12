@@ -193,7 +193,6 @@ impl<T: ReadSeek> Lexer<T> {
     }
 
     pub fn get_string(&mut self) -> Result<Primitives, Error> {
-
         let mut num_paren = 1;
         let mut done = false;
 
@@ -237,7 +236,7 @@ impl<T: ReadSeek> Lexer<T> {
                     let mut x = ch & 0x0f;
                     ch = ch!(self.next_char())?;
                     char_buffered = true;
-                    if ch >= 0x30 && ch <= 0x37 {
+                    if ch >= /* '0' */ 0x30 && ch <= /* '7' */ 0x37 {
                         x = (x << 3) + (ch & 0x0f);
                         ch = ch!(self.next_char())?;
                         if ch >= 0x30 && ch <= 0x37 { 

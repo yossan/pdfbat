@@ -2,8 +2,8 @@ use std::collections::HashMap;
 
 use crate::stream::{Stream, ReadSeek};
 use crate::lexer::{Lexer};
-use crate::primitives::Primitives::{self, Null, Int, Str, HexStr, Real, Array, Dict, Ref, Cmd, EOF};
-use crate::primitives::Name;
+use crate::primitives::{Name, Dictionary, Ref, Cmd}
+use crate::primitives::Primitives;
 use crate::error::Error;
 
 macro_rules! primitive {
