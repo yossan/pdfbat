@@ -12,25 +12,25 @@ impl Debug for Name {
     }
 }
 
+#[derive(PartialEq, Clone)]
 pub struct Dictionary(HashMap<Name, Primitives>);
 
+#[derive(PartialEq, Clone)]
 pub struct Ref(u32, u32);
-
-pub struct Cmd(Vec<u8>);
 
 #[derive(PartialEq, Clone)]
 pub enum Primitives {
     Null,
     Int(i64),
     Str(Vec<u8>),
-    HexStr(Vec<u8>),
+    HexStr(Vec<u16>),
     Real(f64),
     Name(Name),
     Array(Vec<Primitives>),
     Dict(Dictionary),
     //Stream(Stream),
     Ref(Ref),
-    Cmd(Cmd),
+    Cmd(Vec<u8>),
     EOF,
 }
 
@@ -63,7 +63,7 @@ impl Primitives {
 
     pub fn is_dict(&self) -> bool {
         match(self) {
-            Primitives::Dict => true,
+            Primitives::Dict(_) => true,
             _ => false
         }
     }

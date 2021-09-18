@@ -2,7 +2,7 @@ use std::collections::HashMap;
 
 use crate::stream::{Stream, ReadSeek};
 use crate::lexer::{Lexer};
-use crate::primitives::{Name, Dictionary, Ref, Cmd}
+use crate::primitives::{Name, Dictionary, Ref};
 use crate::primitives::Primitives;
 use crate::error::Error;
 

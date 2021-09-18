@@ -1,9 +1,11 @@
 use crate::lexer::Lexer;
 use crate::parser::Parser;
 use crate::stream::{Stream, ReadSeek};
-use crate::primitives::{Name, Dictionary, Ref, Cmd}
+use crate::primitives::{Name, Dictionary, Ref, Cmd};
 use crate::primitives::Primitives;
 use crate::error::Error;
+
+use anyhow::{Result, Context, bail};
 
 macro_rules! get_integer {
     ($obj:expr) => { $obj.get_integer().ok_or_else(|| Error::ParserError) };
@@ -26,75 +28,68 @@ pub struct XRef<T> {
 }
 
 impl<T: ReadSeek> XRef<T> {
-    pub fn new(stream: Stream<T>, startxref: u64, password: Option<String>) -> XRef<T> {
-        XRef {
-            stream: stream,
-            startxref_queue: vec![startxref],
-            password: password,
-            table_state: None,
-            entries: Vec::new(),
-        }
-    }
-}
 
-pub struct XRefReader<T> {
-    stream: Stream<T>,
-    startxref: i64,
-    table_state: Option<TableState>,
-    entries: Vec<Entry>,
-}
+    pub fn parse(stream: Stream<T>, startxref: u64, password: Option<String>) -> Result<XRef<T>> {
+        let reader = XRefReader::new(&stream, startxref);
+        let entries = reader.read_xref(parser);
 
-
-impl<T: ReadSeek> XRefReader<T> {
-    pub fn set_startxref(&mut self, startxref: u64) {
-        self.startxref_queue.push(startxref);
-    }
-
-    pub fn parse(&mut self) {
-        // Dictionary
-        let trait_dict = self.read_xref();
+        let trailer_dict = stream.get_obj()
+            .is_cmd("trailer")
+            .then(|obj| obj.get_dict())
+            .context("failed to fetch trailer dictionary")?
+            .context("trailer obj must be Dict")?;
 
         // TODO: Encrypt
+        /*
         if (trailer_dict.get("Encrypt").is_none()) {
         }
-
-
+        */
         /*
         if (is_dict(root) && root.has("Page")) {
             self.root = root;
         }
         */
+
+        Ok(XRef {
+            stream: stream,
+            trailer_dict: trailer_dict,
+            entries: entries,
+            password: password,
+        })
+    }
+}
+
+struct XRefReader<'a, T> {
+    stream: &'a Stream<T>,
+    startxref: u64,
+}
+
+impl<'a, T: ReadSeek> XRefReader<'a, T> {
+
+    fn new(stream: &'a Stream<T>, startxref: u64) -> XRefReader<'a, T> {
+        XRefReader {
+            stream: stream,
+            startxref: startxref,
+        }
     }
 
-    fn read_xref(&mut self) -> Dictionary {
-        let mut startxref_parsed_cache = vec![0_u64; self.startxref_queue.len()];
+    fn read_xref(&mut self) -> Result<Vec<Entry>> {
 
-        self.stream.set_pos(startxref + self.stream.start());
+        self.stream.set_pos(self.startxref);
 
-        let lexer = Lexer::new(self.stream.clone());
+        let lexer = Lexer::new(stream);
         let mut parser = Parser::new(lexer, true);
-        let obj = parser.get_obj().unwrap();
-        if obj.is_cmd("xref") {
-            // Parse end-of-file XRef
-            let dict = self.process_xreftable(parser);
-        }
+        let obj = parser.get_obj().context("Failed to get xref obj.")?;
+
+        obj.is_cmd("xref")
+            .then(|| {self.process_xreftable(parser)})
+            .context("obj must be a xref.")?
     }
 
-    fn process_xreftable(&mut self, mut parser: Parser<T>) -> Result<Primitives, Error> {
-        self.table_state = Some(TableState {
-            entry_num: 0,
-            stream_pos: parser.lexer().stream().pos(),
-            parser_buf1: None,
-            parser_buf2: None,
-            first_entry_num: None,
-            entry_count: None,
-        });
+    fn process_xreftable(&mut self, mut parser: Parser<T>) -> Result<Entry> {
 
-        let obj = self.read_xreftable(&mut parser)?;
+        self.read_xreftable(&mut parser)?;
 
-        if !obj.is_cmd("trailer") {
-            return Err(Error::ParserError);
-        }
 
         // Read trailer dictionary, e.g.
         // trailer
@@ -107,11 +102,10 @@ impl<T: ReadSeek> XRefReader<T> {
         // a getter interface for the key-value table
         let dict = parser.get_obj()?;
 
-        self.table_state = None;
         return Ok(dict);
     }
 
-    fn read_xreftable(&mut self, parser: &mut Parser<T>) -> Result<Primitives, Error> {
+    fn read_xreftable(&mut self, parser: &mut Parser<T>) -> Result<Primitives> {
         // Example of cross-reference table:
         // xref
         // 0 1                    <-- subsection header (first obj #, obj count)
